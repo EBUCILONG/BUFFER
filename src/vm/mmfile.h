@@ -1,3 +1,6 @@
+#ifndef MMFILE_H
+#define MMFILE_H
+
 #include "userprog/process.h"
 #include <debug.h>
 #include <inttypes.h>
@@ -36,7 +39,7 @@ struct mmfile_entry
 
 // Function pointers
 unsigned mmf_hash_func (const struct hash_elem *e, void * aux UNUSED);
-bool mmf_less (const struct hash_elem * a, const struct hash_elem * b, void* aux UNUSED);
+bool mmf_descend (const struct hash_elem * a, const struct hash_elem * b, void* aux UNUSED);
 
 // insert an entry into the table
 int mmf_insert (struct file* f, void *addr, int length);
@@ -45,3 +48,5 @@ void mmf_free_entry (struct mmfile_entry* mmf);
 
 // Destroy the hash table
 void mmf_destroy_table (struct hash *mmfiles);
+
+#endif

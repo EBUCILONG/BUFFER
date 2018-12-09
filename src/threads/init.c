@@ -28,6 +28,9 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
+#include "vm/mmfile.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -113,19 +116,24 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+  frame_init ();
 #endif
-
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
+// printf("success init threads 1\n");
   serial_init_queue ();
-  timer_calibrate ();
 
+// printf("success init threads2\n");
+  timer_calibrate ();
+// printf("success init threads3\n");
 #ifdef FILESYS
   /* Initialize file system. */
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
 #endif
+
+swap_init ();
 
   printf ("Boot complete.\n");
   

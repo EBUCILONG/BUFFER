@@ -12,9 +12,11 @@
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "devices/input.h"
+#include "vm/mmfile.h"
+#include "vm/page.h"
 
 static int fd_counter = 2;
-
+static uint32_t *esp;
 typedef int pid_t;
 
 /*
@@ -185,9 +187,78 @@ int filesize (int fid){
 }
 
 int read (int id, void* buffer, unsigned size){
-	if ( !validate_user_ptr (buffer) )
-		exit (-1);
+	// printf("fd = %d\n", id);
+	struct thread* cur = thread_current ();
 
+	void* buffer_buffer = buffer;
+	unsigned buffer_size = size;
+	while (buffer_buffer != NULL){
+		if (!is_user_vaddr (buffer_buffer))
+			exit (-1);
+		if (pagedir_get_page (cur->pagedir, buffer_buffer) == NULL){
+			struct sup_pte* pte_tmp = get_addr_pte (&cur->sup_page_table, pg_round_down (buffer_buffer));
+			if (pte_tmp != NULL && !pte_tmp->loaded)
+				load_back (pte_tmp);
+			else if (buffer_buffer >= (esp-32) && pte_tmp == NULL)
+				grow_stack (buffer_buffer);
+			else 
+				exit (-1);
+		}
+
+		if (buffer_size == 0)
+			break;
+		else if (buffer_size > PGSIZE){
+			buffer_size = buffer_size - PGSIZE;
+			buffer_buffer = buffer_buffer + PGSIZE;
+		}
+		else{
+			buffer_size = 0; 
+			buffer_buffer = buffer + size -1;
+		}
+	}
+
+	//if ( !validate_user_ptr (buffer)/* || !validate_user_ptr(buffer+size)*/)
+	//	exit (-1);
+	//}
+	// struct thread *t = thread_current ();
+	// unsigned buffer_size = size;
+	// void *buffer_tmp = buffer;
+	// while (buffer_tmp != NULL)
+ //    {
+ // //      if (!is_valid_uvaddr (buffer_tmp))
+	// // exit (-1);
+
+ //      if (pagedir_get_page (t->pagedir, buffer_tmp) == NULL)   
+	// { 
+	//   struct sup_pte *spte;
+	//   spte = get_addr_pte (&t->sup_page_table, 
+	// 			pg_round_down (buffer_tmp));
+	//   if (spte != NULL /*&& !spte->loaded*/)
+	//     load_back (spte);
+ //      else if (spte == NULL && buffer_tmp >= (esp - 32))
+	//     grow_stack (buffer_tmp);
+	//   else
+	//     exit (-1);
+	// }
+      
+ //      /* Advance */
+ //      if (buffer_size == 0)
+	// {
+	//   /* terminate the checking loop */
+	//   buffer_tmp = NULL;
+	// }
+ //      else if (buffer_size > PGSIZE)
+	// {
+	//   buffer_tmp += PGSIZE;
+	//   buffer_size -= PGSIZE;
+	// }
+ //      else
+	// {
+	//   /* last loop */
+	//   buffer_tmp = buffer + size - 1;
+	//   buffer_size = 0;
+	// }
+ //    }
 	int result = 0;
 	struct file_descriptor* fd;
 
@@ -214,6 +285,8 @@ int read (int id, void* buffer, unsigned size){
 			result = file_read (fd->sys_file, buffer, size);
 		}
 	}
+
+
 	lock_release (&file_lock);
 
 	return result;
@@ -221,9 +294,79 @@ int read (int id, void* buffer, unsigned size){
 
 int
 write (int id, const void *buffer, unsigned size){
-	if ( !validate_user_ptr (buffer) ){
+	
+	struct thread* cur = thread_current ();
+
+	void* buffer_buffer = buffer;
+	unsigned buffer_size = size;
+	while (buffer_buffer != NULL){
+		if (!is_user_vaddr (buffer_buffer))
+			exit (-1);
+		if (pagedir_get_page (cur->pagedir, buffer_buffer) == NULL){
+			struct sup_pte* pte_tmp = get_addr_pte (&cur->sup_page_table, pg_round_down (buffer_buffer));
+			if (pte_tmp != NULL && !pte_tmp->loaded)
+				load_back (pte_tmp);
+			else if (buffer_buffer >= (esp-32) && pte_tmp == NULL)
+				grow_stack (buffer_buffer);
+			else 
+				exit (-1);
+		}
+
+		if (buffer_size == 0)
+			break;
+		else if (buffer_size > PGSIZE){
+			buffer_size = buffer_size - PGSIZE;
+			buffer_buffer = buffer_buffer + PGSIZE;
+		}
+		else{
+			buffer_size = 0; 
+			buffer_buffer = buffer + size -1;
+		}
+	}
+
+	if ( !validate_user_ptr (buffer) || !validate_user_ptr (buffer+size)){
 		exit (-1);
 	}
+	// struct thread *t = thread_current ();
+
+	// unsigned buffer_size = size;
+	// void *buffer_tmp = buffer;
+	// while (buffer_tmp != NULL)
+ //    {
+ // //      if (!is_valid_uvaddr (buffer_tmp))
+	// // exit (-1);
+
+ //      if (pagedir_get_page (t->pagedir, buffer_tmp) == NULL)   
+	// { 
+	//   struct sup_pte *spte;
+	//   spte = get_addr_pte (&t->sup_page_table, 
+	// 			pg_round_down (buffer_tmp));
+	//   if (spte != NULL /*&& !spte->loaded*/)
+	//     load_back (spte);
+ //          else if (spte == NULL && buffer_tmp >= (esp - 32))
+	//     grow_stack (buffer_tmp);
+	//   else
+	//     exit (-1);
+	// }
+      
+ //      /* Advance */
+ //      if (buffer_size == 0)
+	// {
+	//   /* terminate the checking loop */
+	//   buffer_tmp = NULL;
+	// }
+ //      else if (buffer_size > PGSIZE)
+	// {
+	//   buffer_tmp += PGSIZE;
+	//   buffer_size -= PGSIZE;
+	// }
+ //      else
+	// {
+	//   /* last loop */
+	//   buffer_tmp = buffer + size - 1;
+	//   buffer_size = 0;
+	// }
+ //    }
 
 	struct file_descriptor* fd;
 	int result = 0;
@@ -305,26 +448,31 @@ close (int id){
 int
 mmap (int fd, void *addr)
 {
+	// ASSERT (0);
 	struct file_descriptor* file_des = get_id_fd (fd);
 	off_t f_len;
 	bool fail = (!addr) || // 1. address is NULL
 				(addr == 0x0) || // 2. address is 0
-				(pg_ofs (addr) != 0) || // 3. not aligned
+				(pg_ofs(addr) != 0) || // 3. not aligned
 				(fd == 0) || // 4. map stdin
 				(fd == 1) || //5. map stdout
 				(!file_des) || // 6. No such file
-				(!(f_len = file_length (file_des->sys_file))); // 7. file length = 0
+				((f_len = file_length (file_des->sys_file))<=0); // 7. file length = 0
 	if(fail) return -1;
-	// check if there is enough space
+
 	int offset = 0;
 
 	for(; offset < f_len; offset += PGSIZE)
 	{
 		void *address = addr + offset;
-		if(is_user_vaddr (address)
-			|| get_addr_pte (&thread_current ()->sup_page_table, address)
-			|| pagedir_get_page (thread_current ()->pagedir, address)) return -1;
+		if(get_addr_pte (&thread_current ()->sup_page_table, address)
+		|| pagedir_get_page (thread_current ()->pagedir, address)) return -1;
 	}
+	
+	lock_acquire (&file_lock);
+	struct file * f_ = file_reopen (file_des->sys_file);
+	lock_release (&file_lock);
+	return mmf_insert (f_, addr, f_len);
 }
 
 void
@@ -333,7 +481,7 @@ munmap(int mapping)
 	struct mmfile_entry mmf;
 	mmf.mapid = mapping;
 	// delete in the mmfile table
-	struct hash_elem e = hash_delete (&thread_current ()->mmfiles, &mmf.elem);
+	struct hash_elem* e = hash_delete (&thread_current ()->mmfiles, &mmf.elem);
 	if(e != NULL)
 	{
 		struct mmfile_entry *mmf_ = hash_entry (e, struct mmfile_entry, elem);
@@ -346,11 +494,16 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   int* stack_ptr = (int*) f->esp;
+  esp = f->esp;
   
   if( !validate_user_ptr (stack_ptr) ||
       !validate_user_ptr (stack_ptr + 1) ||
       !validate_user_ptr (stack_ptr + 2) ||
-      !validate_user_ptr (stack_ptr + 3)){
+      !validate_user_ptr (stack_ptr + 3) ||
+      !validate_user_ptr (stack_ptr + 4) ||
+      !validate_user_ptr (stack_ptr + 5) ||
+      !validate_user_ptr (stack_ptr + 6) ||
+      !validate_user_ptr (stack_ptr + 7)){
   	exit (-1);
   }
   else{
@@ -397,6 +550,10 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_CLOSE:
 		  close (*(stack_ptr + 1));
 		  break;
+		 case SYS_MMAP:
+		 	f->eax = mmap (*(stack_ptr + 4), (void *)*(stack_ptr + 5));
+		 case SYS_MUNMAP:
+		 	munmap (*(stack_ptr + 1));
   	}
   }
 }

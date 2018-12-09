@@ -5,6 +5,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "threads/synch.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -152,21 +155,28 @@ page_fault (struct intr_frame *f)
   /* illegal write operation or invalid address or illegal accessing
    * of kernel space. exit directly
    */
-  if (!not_present || fault_addr == NULL || !is_user_vaddr (fault_addr))
+
+    
+
+  //lock_acquire (&e_lock);
+  if (!not_present || fault_addr == NULL || !is_user_vaddr (fault_addr)){
+      //ASSERT (0);
    exit (-1); 
+  }
 
   void* rd_fault_addr = pg_round_down (fault_addr);
-  struct sup_pte *spte = get_addr_pte (&thread_current ()->sup_page_table, rd_fault_addr);
+  struct sup_pte *spte = get_addr_pte (&thread_current()->sup_page_table, rd_fault_addr);
 
 
   if (!spte
-	  && rd_fault_addr >= (void *)0x08048000 + 0x20
-	  && fault_addr >= f->esp-32)
+	  && rd_fault_addr >= PHYS_BASE - (8*(1<<20))
+	  && fault_addr+32 >= f->esp)
   {
-	  grow_stack (spte);
+	  grow_stack (fault_addr);
   }
-  else if (spte != NULL && spte->loaded == false) // if the spte exist but does not exist in the physical memory
+  else if (spte != NULL && !spte->loaded) // if the spte exist but does not exist in the physical memory
   {
+
 	  load_back (spte);
   }
   else {

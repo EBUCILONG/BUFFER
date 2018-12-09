@@ -19,6 +19,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
+#include "vm/mmfile.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -95,6 +97,11 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+
+  // Initialize the supplementary hash table and mmf table
+  hash_init (&thread_current ()->sup_page_table, sup_pte_hash, sup_pte_less,NULL);
+  hash_init (&thread_current ()->mmfiles, mmf_hash_func, mmf_descend,NULL);
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -103,12 +110,9 @@ start_process (void *file_name_)
 
   success = load (file_name, &if_.eip, &if_.esp);
 
-  palloc_free_page (file_name); 
+  palloc_free_page (file_name);
   free (file_name_);
 
-// Initialize the supplementary hash table and mmf table
-hash_init (&thread_current ()->sup_page_table, sup_pte_hash, sup_pte_less,NULL);
-hash_init (&thread_current ()->mmfiles, mmf_hash_func, mmf_less,NULL);
 
   int load_status;
   if (!success) 
@@ -129,7 +133,6 @@ hash_init (&thread_current ()->mmfiles, mmf_hash_func, mmf_less,NULL);
   if (!success) {
     thread_exit ();
   }
-
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -390,8 +393,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-
-
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -401,7 +402,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       if (file_ofs < 0 || file_ofs > file_length (file))
         goto done;
       file_seek (file, file_ofs);
-
       if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
         goto done;
       file_ofs += sizeof phdr;
@@ -442,8 +442,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
               if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, writable)){
                 goto done;
+              } 
             }
           else
             goto done;
@@ -451,10 +452,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
         }
     }
 
-  /* Set up stack. */
-  if (!setup_stack (esp, file_name))
-    goto done;
 
+  /* Set up stack. */
+  if (!setup_stack (esp, file_name)){
+    goto done;
+  }
 
 
   /* Start address. */
@@ -539,6 +541,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -548,12 +551,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
+      /* Get a page of memory. 
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
-
-      /* Load this page. */
+      
+       Load this page. 
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
@@ -561,16 +564,40 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
+      /* Add the page to the process's address space. 
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
-        }
+        }*/
+
+      //####################################
+      struct thread* cur = thread_current ();
+      struct sup_pte* pte = malloc (sizeof (struct sup_pte));
+
+      if (pte == NULL){
+        return false;
+      }
+      pte->user_vaddr = upage;
+      pte->type = FILE;
+      pte->file_info.file = file;
+      pte->file_info.offset = ofs;
+      pte->file_info.writable = writable;
+      pte->file_info.read_length = page_read_bytes;
+      pte->file_info.empty_length = page_zero_bytes;
+      pte->loaded = false;
+
+      struct hash_elem *result = hash_insert (&cur->sup_page_table, &pte->elem);
+      //printf ("here\n");
+      /*if (result == NULL){
+        return false;
+      }*/
+      //####################################
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -584,7 +611,7 @@ setup_stack (void **esp, const char* file_name)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = allocate_frame (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -593,7 +620,6 @@ setup_stack (void **esp, const char* file_name)
         int total_length = strlen (file_name) + 1;
         uint32_t args_head;
         int argc = 0;
-
         /* change all the ' ' in the file_name to be '\0' */
         char parsed_args[total_length + 1];
         for (int i = 0; i < total_length; i++)
@@ -612,7 +638,6 @@ setup_stack (void **esp, const char* file_name)
         int word_align = 4 - total_length % 4;
         *esp -= word_align;
         memset (*esp, 0, word_align);
-
         /* insert four bytes of zeros into the stack */
         *esp -= 4;
         memset (*esp , 0, 4);
@@ -659,7 +684,7 @@ setup_stack (void **esp, const char* file_name)
 
       }
       else
-        palloc_free_page (kpage);
+        free_frame (kpage);
     }
   return success;
 }
@@ -677,7 +702,6 @@ static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
-
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL

@@ -100,12 +100,12 @@ hash_insert (struct hash *h, struct hash_elem *new)
 {
   struct list *bucket = find_bucket (h, new);
   struct hash_elem *old = find_elem (h, bucket, new);
-
-  if (old == NULL) 
+  //printf ("%p\n",h);
+  if (old == NULL) {
+    //printf ("hern\n");
     insert_elem (h, bucket, new);
-
+  }
   rehash (h);
-
   return old; 
 }
 

@@ -109,17 +109,21 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
 
   pte = lookup_page (pd, upage, true);
 
-  if (pte != NULL) 
-    {
+
+  if (pte != NULL) {
       ASSERT ((*pte & PTE_P) == 0);
       *pte = pte_create_user (kpage, writable);
-      // change the owner of the page
-      change_owner (kpage, pte, upage);
-
+      struct frame_table_entry *fte=get_frame (kpage);
+      if (fte != NULL)
+        {
+          fte->pg_info = pte;
+          fte->vaddr = upage;   
+        }
       return true;
-    }
-  else
+  }
+  else{    
     return false;
+  }
 }
 
 /* Looks up the physical address that corresponds to user virtual
@@ -134,10 +138,12 @@ pagedir_get_page (uint32_t *pd, const void *uaddr)
   ASSERT (is_user_vaddr (uaddr));
   
   pte = lookup_page (pd, uaddr, false);
-  if (pte != NULL && (*pte & PTE_P) != 0)
+  if (pte != NULL && (*pte & PTE_P) != 0){
     return pte_get_page (*pte) + pg_ofs (uaddr);
-  else
+  }
+  else{
     return NULL;
+  }
 }
 
 /* Marks user virtual page UPAGE "not present" in page

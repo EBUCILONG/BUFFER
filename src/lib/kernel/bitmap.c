@@ -301,6 +301,7 @@ bitmap_scan (const struct bitmap *b, size_t start, size_t cnt, bool value)
 
   if (cnt <= b->bit_cnt) 
     {
+      // ASSERT(0);
       size_t last = b->bit_cnt - cnt;
       size_t i;
       for (i = start; i <= last; i++)

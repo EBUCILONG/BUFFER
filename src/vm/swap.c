@@ -17,19 +17,19 @@ size_t swap_page_num (void){
 
 void swap_init (void){
 	swap_disk = block_get_role (BLOCK_SWAP);
-	ASSERT (!swap_disk == 0);
+	if (swap_disk == NULL) ASSERT (0);
+	// printf("swap_page_num = %d\n", swap_page_num());
 	swap_table = bitmap_create (swap_page_num ());
-	ASSERT (!swap_table == 0);
-	bit_set_all (swap_table, true);
+	ASSERT (!swap_table == NULL);
+	bitmap_set_all (swap_table, true);
 }
 
 size_t swap_out (void* page_idx){
 	size_t free_page = bitmap_scan_and_flip (swap_table, 0, 1, true);
-
-	ASSERT (free_page == BITMAP_ERROR);
+	if(free_page == BITMAP_ERROR) return SIZE_MAX;
 	for (int i = 0; i < NUM_SECTORS_PAGE; i++)
 		block_write (swap_disk, free_page * NUM_SECTORS_PAGE + i, page_idx + i * BLOCK_SECTOR_SIZE);
-	return swap_out;
+	return free_page;
 }
 
 void swap_in (size_t aim_swap_page, void* page_idx){
