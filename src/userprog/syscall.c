@@ -302,6 +302,46 @@ close (int id){
 	return;
 }
 
+int
+mmap (int fd, void *addr)
+{
+	struct file_descriptor* file_des = get_id_fd (fd);
+	off_t f_len;
+	bool fail = (!addr) || // 1. address is NULL
+				(addr == 0x0) || // 2. address is 0
+				(pg_ofs (addr) != 0) || // 3. not aligned
+				(fd == 0) || // 4. map stdin
+				(fd == 1) || //5. map stdout
+				(!file_des) || // 6. No such file
+				(!(f_len = file_length (file_des->sys_file))); // 7. file length = 0
+	if(fail) return -1;
+	// check if there is enough space
+	int offset = 0;
+
+	for(; offset < f_len; offset += PGSIZE)
+	{
+		void *address = addr + offset;
+		if(is_user_vaddr (address)
+			|| get_addr_pte (&thread_current ()->sup_page_table, address)
+			|| pagedir_get_page (thread_current ()->pagedir, address)) return -1;
+	}
+}
+
+void
+munmap(int mapping)
+{
+	struct mmfile_entry mmf;
+	mmf.mapid = mapping;
+	// delete in the mmfile table
+	struct hash_elem e = hash_delete (&thread_current ()->mmfiles, &mmf.elem);
+	if(e != NULL)
+	{
+		struct mmfile_entry *mmf_ = hash_entry (e, struct mmfile_entry, elem);
+		// iteratively delete the suppl_page_table entry
+		mmf_free_entry (mmf_);
+	}
+}
+
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {

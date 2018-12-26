@@ -155,9 +155,22 @@ page_fault (struct intr_frame *f)
   if (!not_present || fault_addr == NULL || !is_user_vaddr (fault_addr))
    exit (-1); 
 
+  void* rd_fault_addr = pg_round_down (fault_addr);
+  struct sup_pte *spte = get_addr_pte (&thread_current ()->sup_page_table, rd_fault_addr);
 
 
-  /* To implement virtual memory, delete the rest of the function
+  if (!spte
+	  && rd_fault_addr >= (void *)0x08048000 + 0x20
+	  && fault_addr >= f->esp-32)
+  {
+	  grow_stack (spte);
+  }
+  else if (spte != NULL && spte->loaded == false) // if the spte exist but does not exist in the physical memory
+  {
+	  load_back (spte);
+  }
+  else {
+	  /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
   printf ("Page fault at %p: %s error %s page in %s context.\n",
@@ -166,5 +179,6 @@ page_fault (struct intr_frame *f)
           write ? "writing" : "reading",
           user ? "user" : "kernel");
   kill (f);
+  }
 }
 

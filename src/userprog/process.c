@@ -106,8 +106,9 @@ start_process (void *file_name_)
   palloc_free_page (file_name); 
   free (file_name_);
 
-  /* If load failed, quit. */
-  //palloc_free_page (file_name_);
+// Initialize the supplementary hash table and mmf table
+hash_init (&thread_current ()->sup_page_table, sup_pte_hash, sup_pte_less,NULL);
+hash_init (&thread_current ()->mmfiles, mmf_hash_func, mmf_less,NULL);
 
   int load_status;
   if (!success) 
@@ -189,6 +190,7 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
+  mmf_destroy_table (&cur->mmfiles);
   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
@@ -221,10 +223,10 @@ process_exit (void)
     }
 
     file_close (cur->executing_file);
-
+    free_sup_page_table (&cur->sup_page_table);
     /* free the file open by this thread */
     struct file_descriptor* fd_buffer;
-    lock_acquire (&file_lock);
+    // lock_acquire (&file_lock);
     e = list_begin (&fd_list);
     while ( e != list_tail (&fd_list)){
       buffer = list_next (e);
@@ -239,7 +241,7 @@ process_exit (void)
 
       e = buffer;
     }
-    lock_release (&file_lock);
+    // lock_release (&file_lock);
 
     /* wake up the potential waiting parent */
     struct thread* parent = get_id_thread (cur->parent_id);

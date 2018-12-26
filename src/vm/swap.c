@@ -10,6 +10,7 @@ struct block *swap_disk;
 struct bitmap *swap_table;
 
 static size_t NUM_SECTORS_PAGE = PGSIZE / BLOCK_SECTOR_SIZE;
+
 size_t swap_page_num (void){
 	return block_size (swap_disk) / NUM_SECTORS_PAGE;
 }

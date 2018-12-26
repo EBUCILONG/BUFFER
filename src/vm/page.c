@@ -24,8 +24,8 @@ unsigned
 sup_pte_hash (const struct hash_elem *ht, void *aux UNUSED)
 {
 	const struct sup_pte *pte;
-	pte = hash_entry (ht, struct suppl_pte, elem);
-	return hash_bytes (&pte->uvaddr, sizeof pte->uvaddr);
+	pte = hash_entry (ht, struct sup_pte, elem);
+	return hash_bytes (&pte->user_vaddr, sizeof pte->user_vaddr);
 }
 
 bool
@@ -35,17 +35,18 @@ void *aux UNUSED)
 {
 	const struct sup_pte *ptea;
 	const struct sup_pte *pteb;
-	ptea = hash_entry (hta, struct suppl_pte, elem);
-	pteb = hash_entry (htb, struct suppl_pte, elem);
-	return vsptea->uvaddr < vspteb->uvaddr;
+	ptea = hash_entry (hta, struct sup_pte, elem);
+	pteb = hash_entry (htb, struct sup_pte, elem);
+	return ptea->user_vaddr < pteb->user_vaddr;
 }
 
 /*retrieve the sup_pte from the hash table*/
 struct sup_pte*
 get_addr_pte (struct hash* ht, void* uvaddr){
 	struct sup_pte pte;
+	pte.user_vaddr = uvaddr;
 	struct hash_elem *elem;
-	elem = hash_find (ht, &sup_pte);
+	elem = hash_find (ht, &pte.elem);
 	if (elem == NULL)
 		return NULL;
 	else return hash_entry (elem, struct sup_pte, elem);
@@ -64,7 +65,7 @@ bool load_back (struct sup_pte* pte){
 			return false;
 		}
 		memset (newpage + pte->file_info.read_length, 0, pte->file_info.empty_length);
-		pagedir_set_page (cur->pagedir, pte->user_vaddr, newpage, pte->file_info.writable)
+		pagedir_set_page (cur->pagedir, pte->user_vaddr, newpage, pte->file_info.writable);
 		pte->loaded = true;
 		return true;
 	}
@@ -94,7 +95,7 @@ bool load_back (struct sup_pte* pte){
 		swap_in (pte->swap_index, pte->user_vaddr);
 		if (pte->type == SWAP)
 			hash_delete (&cur->sup_page_table, &pte->elem);
-		if (pte->tyoe == FILE | SWAP){
+		if (pte->type == FILE | SWAP){
 			pte->type = FILE;
 			pte->loaded = true;
 		}
@@ -161,7 +162,7 @@ add_mmf_pte (struct file *file, off_t offset, uint8_t *user_page, uint32_t read_
 	pte->type = MMF;
 	pte->mmf_info.file = file;
 	pte->mmf_info.offset = offset;
-	pte->mmf_info.read_length = read_length;
+	pte->mmf_info.read_position = read_length;
 	pte->loaded = false;
 
 	struct hash_elem *result = hash_insert (&cur->sup_page_table, &pte->elem);
@@ -174,5 +175,5 @@ void write_mmf_back (struct sup_pte* pte){
 	if (pte->type != MMF)
 		return;
 	file_seek (pte->mmf_info.file, pte->mmf_info.offset);
-	file_write (pte->mmf_info.file, pte->user_vaddr, pte->read_length);
+	file_write (pte->mmf_info.file, pte->user_vaddr, pte->mmf_info.read_position);
 }

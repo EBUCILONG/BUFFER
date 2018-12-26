@@ -118,6 +118,7 @@ struct thread
     /* for project 3 */
     struct hash sup_page_table;
     struct hash mmfiles;
+    int mapid;
 
 #endif
 
